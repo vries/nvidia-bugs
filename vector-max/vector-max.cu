@@ -2,6 +2,27 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+/* gpuErrchk / gpuAssert copied from:
+   https://stackoverflow.com/questions/14038589/what-is-the-canonical-way-to-check-for-errors-using-the-cuda-runtime-api .  */
+
+#define gpuErrchk(ans)				\
+  do {						\
+    gpuAssert((ans), __FILE__, __LINE__);	\
+  } while (0)
+
+inline void
+gpuAssert (cudaError_t code, const char *file, int line, bool do_abort=true)
+{
+  if (code != cudaSuccess)
+    {
+      fprintf (stderr,"GPUassert: %s %s %d\n",
+	       cudaGetErrorString (code), file, line);
+
+      if (do_abort)
+	abort ();
+    }
+}
+
 __global__ void
 hello (unsigned int *output)
 {
@@ -114,8 +135,6 @@ unsigned int a[BSIZE];
 int
 main (void)
 {
-  cudaError_t res;
-
   /* Dimensions: just one warp.  */
   #define WARP_SIZE 32
   #define NR_WARPS 1
@@ -128,22 +147,16 @@ main (void)
 
   /* Allocate device copy of a.  */
   unsigned int *p;
-  res = cudaMalloc ((void**)&p, BSIZE * sizeof(int)); 
-  if (res != cudaSuccess)
-    abort ();
+  gpuErrchk ((cudaMalloc ((void**)&p, BSIZE * sizeof(int))));
 
   /* Copy to device.  */
-  res = cudaMemcpy (p, &a[0], BSIZE * sizeof (int), cudaMemcpyHostToDevice); 
-  if (res != cudaSuccess)
-    abort ();
+  gpuErrchk ((cudaMemcpy (p, &a[0], BSIZE * sizeof (int), cudaMemcpyHostToDevice)));
 
   /* Execute kernel.  */
   hello<<<dimGrid, dimBlock>>> (p);
 
   /* Copy back to host.  */
-  res = cudaMemcpy (&a[0], p, BSIZE * sizeof (int), cudaMemcpyDeviceToHost);
-  if (res != cudaSuccess)
-    abort ();
+  gpuErrchk ((cudaMemcpy (&a[0], p, BSIZE * sizeof (int), cudaMemcpyDeviceToHost)));
 
   /* Print output.  */
   for (int i = 0; i < BSIZE; ++i)
